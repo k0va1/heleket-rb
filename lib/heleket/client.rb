@@ -1,6 +1,6 @@
 require "faraday"
-require 'openssl'
-require 'base64'
+require "openssl"
+require "base64"
 
 module Heleket
   class Client
@@ -19,19 +19,16 @@ module Heleket
     end
 
     def create_payment(amount:, currency:, order_id:)
-      response = @conn.post("v1/payment", {
+      @conn.post("v1/payment", {
         amount: amount,
         currency: currency,
         order_id: order_id
       }.compact)
-      response
     end
 
     def payment_info(uuid:, order_id:)
-      response = @conn.post("v1/payment/info", {uuid: uuid, order_id: order_id})
-      response
+      @conn.post("v1/payment/info", {uuid: uuid, order_id: order_id})
     end
-
 
     class SignRequestMiddleware < Faraday::Middleware
       def initialize(app, secret_key)
@@ -40,8 +37,8 @@ module Heleket
       end
 
       def call(env)
-        signature = OpenSSL::HMAC.hexdigest('MD5', @secret_key, env.body.to_s)
-        env.request_headers['sign'] = signature
+        signature = OpenSSL::HMAC.hexdigest("MD5", @secret_key, env.body.to_s)
+        env.request_headers["sign"] = signature
 
         @app.call(env)
       end

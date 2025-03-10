@@ -10,4 +10,7 @@ test:
 	bundle exec rspec
 
 lint:
-	bundle exec rubocop
+	bundle exec standardrb
+
+lint-fix:
+	bundle exec standardrb --fix
