@@ -9,6 +9,8 @@ module Heleket
 
   class InvalidHashError < Error; end
 
+  class ClientError < Error; end
+
   class ServerError < Error
     attr_reader :status_code, :response
 

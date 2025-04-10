@@ -1,6 +1,7 @@
 require "faraday"
-require "openssl"
+require "digest"
 require "base64"
+require "logger"
 
 module Heleket
   class Client
@@ -12,8 +13,12 @@ module Heleket
       @api_key = api_key
       @merchant_id = merchant_id
       @conn = Faraday.new(url: API_URL) do |faraday|
+        faraday.use SignRequestMiddleware, api_key
+        faraday.headers["Content-Type"] = "application/json"
+        faraday.headers["merchant"] = merchant_id
         faraday.request :json
         faraday.response :json
+        faraday.response :logger, ::Logger.new($stdout), bodies: true
         faraday.adapter Faraday.default_adapter
       end
     end
@@ -22,22 +27,21 @@ module Heleket
       body = response.body
 
       case response.status
+      when 400..499
+        raise ClientError.new(body)
       when 500..599
-        raise Error::ServerError.new(response.status, body["message"])
+        raise ServerError.new(response.status, body["message"])
       end
-
-      nil if body["state"] == 0
     end
 
     PaymentResponse = Data.define(:uuid, :order_id, :amount, :payment_amount, :payer_amount,
       :discount_percent, :discount, :payer_currency, :currency, :merchant_amount, :network,
       :address, :from, :txid, :payment_status, :url, :expired_at, :is_final, :additional_data,
-      :created_at, :updated_at)
-    def create_payment(amount:, currency:, order_id:, **params)
+      :created_at, :updated_at, :payment_amount_usd, :payer_amount_exchange_rate, :comments, :status, :commission, :address_qr_code)
+    def create_payment(amount:, currency:, **params)
       response = @conn.post("v1/payment", {
         amount: amount,
         currency: currency,
-        order_id: order_id,
         **params
       }.compact)
 
@@ -46,8 +50,10 @@ module Heleket
       PaymentResponse.new(**response.body["result"].transform_keys(&:to_sym))
     end
 
-    def payment_info(uuid:, order_id:)
-      response = @conn.post("v1/payment/info", {uuid: uuid, order_id: order_id})
+    def payment_info(uuid: nil, order_id: nil)
+      raise ArgumentError, "Either uuid or order_id must be provided" if uuid.nil? && order_id.nil?
+
+      response = @conn.post("v1/payment/info", {uuid: uuid, order_id: order_id}.compact)
 
       handle_errors!(response)
 
@@ -100,7 +106,7 @@ module Heleket
       end
 
       def call(env)
-        signature = OpenSSL::HMAC.hexdigest("MD5", @secret_key, env.body.to_s)
+        signature = Digest::MD5.hexdigest(Base64.strict_encode64(env.body.to_json) + @secret_key)
         env.request_headers["sign"] = signature
 
         @app.call(env)
